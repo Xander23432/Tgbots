@@ -365,11 +365,11 @@ if __name__ == '__main__':
     dp = updater.dispatcher
     dp.add_handler(CommandHandler('start', start))
     dp.add_handler(CommandHandler('help', help))
-    dp.add_handler(CallbackQueryHandler(button))
     dp.add_handler(CommandHandler('data', data))
     dp.add_handler(CommandHandler('randpoke', randpoke))
     dp.add_handler(CommandHandler('shiny', shiny))
     dp.add_handler(CommandHandler('stats', stats))
     dp.add_handler(CommandHandler('move', move))
+    dp.add_handler(CallbackQueryHandler(button))
     updater.start_polling()
     updater.idle()
