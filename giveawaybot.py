@@ -1,27 +1,23 @@
 from telegram import *
 from telegram.ext import *
-import telegram, telegram.ext, random, logging, datetime, asyncio, html, uuid
-
-
+import telegram, telegram.ext, telegram.error, psycopg, uuid, logging, datetime, html
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 u = Updater('TOKEN', use_context=True)
-
-#setting vars
 j = u.job_queue
-items={}
-users=[]
-users = list(dict.fromkeys(users))
 
+#Connecting to the database
+conn=psycopg.connect(host="localhost",user="postgres",dbname="test",password="password")
+cur=conn.cursor()
 
 def start(update: Update, context:CallbackContext):
     if update.effective_chat.type!='private': 
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Hey! I am alive :) PM me for any kind of help 😉")
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'''🎉 All about <b>GiveawayBot</b> 🎉
-
 <b>Hold giveaways quickly and easily!</b>
 
 Hello! I'm <b>GiveawayBot</b>, and I'm here to make it as easy as possible to hold giveaways on your Telegram group/channel! I was created by <a href='tg://user?id=1383570275'>Aditya</a> <code>(1383570275)</code> using the <a href='https://github.com/python-telegram-bot/python-telegram-bot'>Python-telegram-bot</a> library (13.7) Check out my commands by typing /ghelp''', parse_mode=ParseMode.HTML, disable_web_page_preview=True)
@@ -29,65 +25,58 @@ def ghelp(update: Update, context:CallbackContext):
     if update.effective_chat.type=='private': 
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'''Here's the commands that the bot supports: 
 <b>!gstart {html.escape('<time>')} [winners]w [prize]</b> - starts a giveaway
-<b>!gend [messageId]</b> - ends (picks a winner for) the specified or latest giveaway in the current channel
-<b>!greroll [messageId]</b> - re-rolls the specified or latest giveaway in the current channel
+<b>!gend [giveawayId]</b> - ends (picks a winner for) the specified or latest giveaway in the current channel
+<b>!greroll [giveawayId]</b> - re-rolls the specified or latest giveaway in the current channel
 <b>!glist</b> - lists active giveaways on the server
 Do not include {html.escape('<>')} nor [] - {html.escape('<>')} means required and [] means optional.
 ''', parse_mode=ParseMode.HTML)
+        return ghelp
     else:
-        keyboard=[[InlineKeyboardButton(text='Click here for help!', url='http://t.me/dctggiveawaybot?start=ghelp')]]
+        keyboard=[[InlineKeyboardButton(text='Click here for help!', url=f'http://t.me/dctggiveawaybot?start={ghelp}')]]
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Contact me in PM to get the list of available commands.", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def button(update: Update, context: CallbackContext):
     query = update.callback_query
     choice = query.data
+    msg=update.effective_message.message_id
+    user_id=update.callback_query.from_user.id
     if choice=='1':
-        members=context.bot.get_chat_member(chat_id=update.effective_chat.id, user_id=update.callback_query.from_user.id)
+        members=context.bot.get_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
         member=['administrator', 'creator', 'member', 'restricted']
         if members.status in member:
-            users.append(update.callback_query.from_user.id)
             update.callback_query.answer(text='Prticipation successful!', show_alert=True)
         else:
             update.callback_query.answer(text='Join the channel to participate', show_alert=True)
-        
 
-
-#giveaway start
 def gstart(update: Update, context: CallbackContext):
+    user=[]
+    user.append(update.effective_user.id)
+    print(user)
     if update.effective_chat.type=='private':
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"💥 This command cannot be used in Private Messages!")
     else:
+        giveaway_id=uuid.uuid4()
         user_says=' '.join(context.args)
+        keyboard=[[InlineKeyboardButton('🎉', callback_data='1', context=giveaway_id)]]
         user_says=user_says.split(' ')
-        keyboard=[[InlineKeyboardButton('🎉', callback_data='1')]]
+        item=user_says[2:]
+        chat_id=update.effective_chat.id
         now=datetime.datetime.now()
         seconds=False
         minutes=False
         hours=False
         days=False
-        chat_id=update.effective_chat.id
-        uid=uuid.uuid4()
         try:
             tym=user_says[0]
             winners=user_says[1]
-            items[uid] = {"id": chat_id, "item": user_says[2:]}
-            item=str(items[uid]["item"])
-            item=item.replace('[', '')
-            item=item.replace(']', '')
-            item=item.replace("'", '')
-
         except:
             context.bot.send_message(chat_id=chat_id, text=f'''💥 Please include a length of time, and a number of winners and a prize! Example usage: <code>/gstart 30m 5w Awesome T-Shirt</code>''', parse_mode=ParseMode.HTML)
         try:
-            #winner
-            if winners.endswith('w' or 'W'):
-                winners=winners.split('w' or 'W')
-                winners=int(winners[0])
-            elif winners<1:
-                context.bot.send_message(chat_id=chat_id, text=f'''Winners cannot be less than 1''', parse_mode=ParseMode.HTML)
-        except:    
-            context.bot.send_message(chat_id=chat_id, text=f'''💥 Failed to parse winners from <code>{winners}</code>
-Example usage: <code>/gstart 30m 5w Awesome T-Shirt</code>''', parse_mode=ParseMode.HTML)
+            winners=winners.split('w' or 'W')
+            winners=int(winners[0])
+        except: 
+            winners=1
+            item=user_says[1:]   
         try:
             #time
             if tym.endswith('s' or 'S'):
@@ -122,47 +111,62 @@ Example usage: <code>/gstart 30m 5w Awesome T-Shirt</code>''', parse_mode=ParseM
                 end=added.strftime('Today at %I:%M %p')
             else:
                 end=added.strftime('%m/%d/%Y')
-        
-            context.bot.send_message(chat_id=chat_id, text=f'''🎉 GIVEAWAY 🎉
+            item=str(item)
+            item=item.replace('[', '')
+            item=item.replace(']', '')
+            item=item.replace("'", '')
+            item=item.replace(",", '')
+            msg=context.bot.send_message(chat_id=chat_id, text=f'''🎉 GIVEAWAY 🎉
 <b>{item}</b>
 React with 🎉 to enter!
 Ends: in {tym} ({added.strftime("%B %d, %Y %I:%M %p")})
-Hosted by: @{update.effective_user.username}
+Hosted by: <a href='tg://user?id={update.effective_user.id}'>{update.effective_user.first_name}</a>
 {winners} Winner(s) | Ends at • {end}
-Giveaway id: <code>{uid}</code>
+Giveaway id: <code>{giveaway_id}</code>
         ''', parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
             tym1=int(tym1)
             if seconds==True:
-                j.run_once(callback, tym1, context=uid)
+                j.run_once(callback, tym1, context=giveaway_id)
             elif minutes==True:
-                j.run_once(callback, tym1*60, context=uid)
+                j.run_once(callback, tym1*60, context=giveaway_id)
             elif hours==True:
-                j.run_once(callback, tym1*60*60, context=uid)
+                j.run_once(callback, tym1*60*60, context=giveaway_id)
             elif days==True:
-                j.run_once(callback, tym1*60*60*24, context=uid)
-            else:
-                pass
-            print('successful')
-        except Exception as e:
-            print(f'unsuccesful {e}')
+                j.run_once(callback, tym1*60*60*24, context=giveaway_id)
+                
+            try:
+                command = f'''CREATE TABLE giveaway(
+                giveaway_id TEXT PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                item_name TEXT,
+                message_id BIGINT NOT NULL,
+                users_id TEXT
+                )
+                '''
+                cur.execute(command)
+                cur.execute("INSERT INTO giveaway (giveaway_id, chat_id, item_name, message_id) VALUES (%s, %s, %s, %s)", (giveaway_id, chat_id, str(item), msg.message_id))
+            except psycopg.errors.DuplicateTable:
+                cur.execute("ROLLBACK")
+                cur.execute("INSERT INTO giveaway (giveaway_id, chat_id, item_name, message_id) VALUES (%s, %s, %s, %s)", (giveaway_id, chat_id, str(item), msg.message_id))
+            conn.commit()
+        except Exception as err:
+            print(f"Unsuccesful error {err} occured")
 
-  
-#giveaway end result
 def callback(context: telegram.ext.CallbackContext):
-    uid = context.job.context
-    chat_id = items[uid]["id"]
-    item=str(items[uid]["item"])
-    item=item.replace('[', '')
-    item=item.replace(']', '')
-    item=item.replace("'", '')
-    context.bot.send_message(chat_id=chat_id, text=f'Great you won {item}')
-    del items[uid]
+    cur.execute(f"SELECT chat_id, item_name FROM giveaway WHERE giveaway_id='{context.job.context}'")
+    row=cur.fetchall()
+    chat_id=row[0][0]
+    item_name=row[0][1]
+    context.bot.send_message(chat_id=chat_id, text=f"Congratulation you won <b>{item_name}</b>", parse_mode=ParseMode.HTML)
+    cur.execute(f"DELETE FROM giveaway WHERE giveaway_id='{context.job.context}'")
+    conn.commit()
+
 
 if __name__ == '__main__':
     dp = u.dispatcher
-    dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CommandHandler('ghelp', ghelp))
-    dp.add_handler(CommandHandler('gstart', gstart))
+    dp.add_handler(PrefixHandler(['!', '/'], 'start', start))
+    dp.add_handler(PrefixHandler(['!', '/'],'ghelp', ghelp))
+    dp.add_handler(PrefixHandler(['!', '/'],'gstart', gstart))
     dp.add_handler(CallbackQueryHandler(button))
     u.start_polling()
     u.idle()
