@@ -1,16 +1,17 @@
 from telegram import *
 from telegram.ext import *
-import telegram, telegram.ext, telegram.error, psycopg, uuid, logging, datetime, html
+from telegram.utils import *
+import telegram, telegram.ext, psycopg, uuid, logging, datetime, html, traceback
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-u = Updater('TOKEN', use_context=True)
+u = Updater('2007432334:AAGnHMK2zio6aQAjIpiKTx-4dM_lnrd9JRw')
 j = u.job_queue
 
 #Connecting to the database
-conn=psycopg.connect(host="localhost",user="postgres",dbname="test",password="password")
+conn=psycopg.connect(host="localhost",user="postgres",dbname="test",password="gigabyte1")
 cur=conn.cursor()
 
 def start(update: Update, context:CallbackContext):
@@ -20,7 +21,7 @@ def start(update: Update, context:CallbackContext):
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'''🎉 All about <b>GiveawayBot</b> 🎉
 <b>Hold giveaways quickly and easily!</b>
 
-Hello! I'm <b>GiveawayBot</b>, and I'm here to make it as easy as possible to hold giveaways on your Telegram group/channel! I was created by <a href='tg://user?id=1383570275'>Aditya</a> <code>(1383570275)</code> using the <a href='https://github.com/python-telegram-bot/python-telegram-bot'>Python-telegram-bot</a> library (13.7) Check out my commands by typing /ghelp''', parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+Hello! I'm <b>GiveawayBot</b>, and I'm here to make it as easy as possible to hold giveaways on your Telegram group/channel! I was created by <a href='tg://user?id=2056511700'>Aditya</a> <code>(2056511700)</code> using the <a href='https://github.com/python-telegram-bot/python-telegram-bot'>Python-telegram-bot</a> library (13.7) Check out my commands by typing /ghelp''', parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 def ghelp(update: Update, context:CallbackContext):
     if update.effective_chat.type=='private': 
         context.bot.send_message(chat_id=update.effective_chat.id, text=f'''Here's the commands that the bot supports: 
@@ -30,9 +31,8 @@ def ghelp(update: Update, context:CallbackContext):
 <b>!glist</b> - lists active giveaways on the server
 Do not include {html.escape('<>')} nor [] - {html.escape('<>')} means required and [] means optional.
 ''', parse_mode=ParseMode.HTML)
-        return ghelp
     else:
-        keyboard=[[InlineKeyboardButton(text='Click here for help!', url=f'http://t.me/dctggiveawaybot?start={ghelp}')]]
+        keyboard=[[InlineKeyboardButton(text='Click here for help!', url=f'http://t.me/dctggiveawaybot?start=ghelp')]]
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Contact me in PM to get the list of available commands.", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def button(update: Update, context: CallbackContext):
@@ -42,16 +42,18 @@ def button(update: Update, context: CallbackContext):
     user_id=update.callback_query.from_user.id
     if choice=='1':
         members=context.bot.get_chat_member(chat_id=update.effective_chat.id, user_id=user_id)
-        member=['administrator', 'creator', 'member', 'restricted']
+        member=['administrator', 'creator', 'member', 'restricted', 'owner']
         if members.status in member:
+            cur.execute(f"SELECT giveaway_id FROM giveaway WHERE chat_id={update.effective_chat.id} AND message_id={msg}")
+            row=cur.fetchall()
+            giveaway_id=row[0][0]
+            cur.execute(f"")
+            conn.commit()
             update.callback_query.answer(text='Prticipation successful!', show_alert=True)
         else:
             update.callback_query.answer(text='Join the channel to participate', show_alert=True)
 
 def gstart(update: Update, context: CallbackContext):
-    user=[]
-    user.append(update.effective_user.id)
-    print(user)
     if update.effective_chat.type=='private':
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"💥 This command cannot be used in Private Messages!")
     else:
@@ -102,7 +104,7 @@ def gstart(update: Update, context: CallbackContext):
                 tym=tym.split('d' or 'D')
                 added=now+datetime.timedelta(days=int(tym[0]))
                 tym1=tym[0]
-                tym=f'{tym[0]} days'
+                tym=f'{tym[0]} Days'
         except:
             context.bot.send_message(chat_id=chat_id, text=f'''💥 Failed to parse time from <code>{tym}</code>
 Example usage: <code>/gstart 30m 5w Awesome T-Shirt</code>''', parse_mode=ParseMode.HTML)
@@ -126,31 +128,32 @@ Giveaway id: <code>{giveaway_id}</code>
         ''', parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
             tym1=int(tym1)
             if seconds==True:
-                j.run_once(callback, tym1, context=giveaway_id)
+                j.run_once(callback, tym1, context=giveaway_id, name=str(giveaway_id))
             elif minutes==True:
-                j.run_once(callback, tym1*60, context=giveaway_id)
+                j.run_once(callback, tym1*60, context=giveaway_id, name=str(giveaway_id))
             elif hours==True:
-                j.run_once(callback, tym1*60*60, context=giveaway_id)
+                j.run_once(callback, tym1*60*60, context=giveaway_id, name=str(giveaway_id))
             elif days==True:
-                j.run_once(callback, tym1*60*60*24, context=giveaway_id)
-                
+                j.run_once(callback, tym1*60*60*24, context=giveaway_id, name=str(giveaway_id))
+
             try:
-                command = f'''CREATE TABLE giveaway(
-                giveaway_id TEXT PRIMARY KEY,
+                table=f'''CREATE TABLE giveaway(
+                id BIGSERIAL NOT NULL,
+                giveaway_id TEXT NOT NULL PRIMARY KEY,
                 chat_id BIGINT NOT NULL,
                 item_name TEXT,
                 message_id BIGINT NOT NULL,
                 users_id TEXT
                 )
                 '''
-                cur.execute(command)
+                cur.execute(table)
                 cur.execute("INSERT INTO giveaway (giveaway_id, chat_id, item_name, message_id) VALUES (%s, %s, %s, %s)", (giveaway_id, chat_id, str(item), msg.message_id))
             except psycopg.errors.DuplicateTable:
                 cur.execute("ROLLBACK")
                 cur.execute("INSERT INTO giveaway (giveaway_id, chat_id, item_name, message_id) VALUES (%s, %s, %s, %s)", (giveaway_id, chat_id, str(item), msg.message_id))
-            conn.commit()
-        except Exception as err:
-            print(f"Unsuccesful error {err} occured")
+            conn.commit() 
+        except Exception:
+            print(traceback.format_exc())
 
 def callback(context: telegram.ext.CallbackContext):
     cur.execute(f"SELECT chat_id, item_name FROM giveaway WHERE giveaway_id='{context.job.context}'")
@@ -161,12 +164,35 @@ def callback(context: telegram.ext.CallbackContext):
     cur.execute(f"DELETE FROM giveaway WHERE giveaway_id='{context.job.context}'")
     conn.commit()
 
+def gend(update: Update, context: CallbackContext):
+    user_says=' '.join(context.args)
+    user_says= user_says.split(' ')
+    members=context.bot.get_chat_member(chat_id=update.effective_chat.id, user_id=update.effective_user.id)
+    member=['administrator', 'creator', 'owner']
+    giveaway_id=user_says[0]
+    if members.status not in member:
+        context.bot.send_message(chat_id=update.effective_chat.id, text="You don't have administrator privileges")
+    else:
+        try:
+            if giveaway_id=='':
+                cur.execute(f'SELECT giveaway_id FROM giveaway WHERE chat_id={update.effective_chat.id} AND id=(SELECT MAX(id) FROM giveaway) ')
+                row=cur.fetchall()
+                giveaway_id=row[0][0]    
+            current_jobs = j.get_jobs_by_name(giveaway_id)
+            for job in current_jobs:
+                job.run(context.dispatcher)
+                job.schedule_removal()
+            cur.execute(f"DELETE FROM giveaway WHERE giveaway_id='{giveaway_id}' AND chat_id={update.effective_chat.id}")
+            conn.commit()
+        except:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"There is not any giveaway running in this chat with that giveaway id!")
 
 if __name__ == '__main__':
     dp = u.dispatcher
     dp.add_handler(PrefixHandler(['!', '/'], 'start', start))
-    dp.add_handler(PrefixHandler(['!', '/'],'ghelp', ghelp))
-    dp.add_handler(PrefixHandler(['!', '/'],'gstart', gstart))
+    dp.add_handler(PrefixHandler(['!', '/'], 'ghelp', ghelp))
+    dp.add_handler(PrefixHandler(['!', '/'], 'gstart', gstart))
+    dp.add_handler(PrefixHandler(['!', '/'], 'gend', gend))
     dp.add_handler(CallbackQueryHandler(button))
     u.start_polling()
     u.idle()
