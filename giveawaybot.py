@@ -265,4 +265,4 @@ if __name__ == '__main__':
     dp.add_handler(PrefixHandler(['!', '/'], 'greroll', greroll))
     dp.add_handler(CallbackQueryHandler(button))
     u.start_polling()
-    u.idle()from telegram import *
+    u.idle()
