@@ -94,7 +94,6 @@ def gstart(update: Update, context: CallbackContext):
             if time.endswith("s"):
                 time = time.split("s")
                 time1 = int(time[0])
-                print(time1)
                 if time1 > 2592000:
                     context.bot.send_message(
                         chat_id=chat.id, text="Giveaways cannot be greater than 30 days!")
