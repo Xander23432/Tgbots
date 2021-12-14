@@ -1,5 +1,6 @@
 from telegram import Update, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup, Chat, ChatMember, ChatMemberUpdated, ChatAction
-from telegram.ext import Updater, CallbackContext, PrefixHandler, ConversationHandler, MessageHandler, Filters, ChatMemberHandler, CallbackQueryHandler
+from telegram.ext import Updater, CallbackContext, PrefixHandler, ConversationHandler, MessageHandler, Filters, ChatMemberHandler, CallbackQueryHandler, PicklePersistence
+from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
 from pytz import timezone
 import psycopg
 import logging
@@ -24,12 +25,11 @@ allowed = [ChatMember.ADMINISTRATOR, ChatMember.CREATOR]
 
 
 def gabout(update: Update, context: CallbackContext):
-    bot = context.bot
     if update.effective_chat.type != Chat.PRIVATE:
-        bot.send_message(chat_id=update.effective_chat.id,
-                         text=f"Hey! I am alive :) PM me for any kind of help 😉")
+        update.message.reply_text(
+            "Hey! I am alive :) PM me for any kind of help 😉")
     else:
-        bot.send_message(chat_id=update.effective_chat.id, text=f'''🎉 All about <b>GiveawayBot</b> 🎉
+        update.message.reply_text(f'''🎉 All about <b>GiveawayBot</b> 🎉
 
 <b>Hold giveaways quickly and easily!</b>
 
@@ -60,7 +60,7 @@ For additional help contact <a href="tg://user?id=2056511700">Aditya</a>'''
 
 
 def ginvite(update: Update, context: CallbackContext):
-    context.bot.send_message(chat_id=update.effective_chat.id, text='''🎉 Hello! I'm <b>GiveawayBot</b>! I help to make giveaways quick and easy!
+    update.message.reply_text('''🎉 Hello! I'm <b>GiveawayBot</b>! I help to make giveaways quick and easy!
 You can add me to your group with this link:
 
 🔗 https://t.me/dctggiveawaybot?startgroup=true
@@ -149,7 +149,6 @@ def button(update: Update, context: CallbackContext):
             update.callback_query.answer(text="Timezone set successfully!")
             update.callback_query.edit_message_text(
                 f"Successfully set timezone to {choice}")
-        print(context.dispatcher.chat_data)
     else:
         update.callback_query.answer(text="Only admins can use this")
 
@@ -177,56 +176,64 @@ def gconnect(update: Update, context: CallbackContext):
                 context.user_data["chat_id"] = chat_id
             else:
                 update.message.reply_text(
-                    f"Connection to this chat is not allowed")
+                    f"Connection to that chat is not allowed")
         except:
             update.message.reply_text(
                 "That doesn't seems like a valid chat id, try again!")
 
 
 def gtimezone(update: Update, context: CallbackContext):
-    try:
-        if update.effective_chat.type in [Chat.GROUP, Chat.SUPERGROUP]:
+    if update.effective_chat.type in [Chat.GROUP, Chat.SUPERGROUP]:
+        member = context.bot.get_chat_member(
+            chat_id=update.effective_chat.id, user_id=update.effective_user.id)
+        if member.status in allowed:
             context.bot.send_message(chat_id=update.effective_chat.id, text="Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
                                      reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-        elif update.effective_chat.type in [Chat.PRIVATE]:
-            try:
-                context.user_data["chat_id"]
-                context.bot.send_message(chat_id=update.effective_chat.id, text="Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
-                                         reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-            except:
+        else:
+            update.message.reply_text("You dont have administrator privileges")
+    elif update.effective_chat.type in [Chat.PRIVATE]:
+        try:
+            member = context.bot.get_chat_member(chat_id=int(
+                context.user_data["chat_id"]), user_id=update.effective_user.id)
+            if member.status in allowed:
+                update.message.reply_text("Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
+                                          reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            else:
                 update.message.reply_text(
-                    "use <code>!gconnect</code> command first!", parse_mode=ParseMode.HTML)
-    except:
-        update.message.reply_text("Connection to that chat is not allowed")
+                    "You dont have administrator privileges")
+        except Exception:
+            update.message.reply_text(
+                "use <code>!gconnect</code> command first!", parse_mode=ParseMode.HTML)
+            print(traceback.format_exc())
 
 
 def gstart(update: Update, context: CallbackContext):
     chat = update.effective_chat
     user = update.effective_user
-    bot = context.bot
     if chat.type == Chat.PRIVATE:
-        bot.send_message(chat_id=update.effective_chat.id,
-                         text=f"💥 This command cannot be used in Private Messages!")
+        update.message.reply_text(
+            f"💥 This command cannot be used in Private Messages!")
     else:
-        user_says = " ".join(context.args).split(" ")
-        item = user_says[2:]
-        try:
-            time = user_says[0]
-        except:
-            bot.send_message(
-                chat_id=chat.id, text=f"💥 Please include a length of time, and a number of winners and a prize! \nExample usage: <code>/gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
-        try:
-            winners = user_says[1].split("w")
-            winners = int(winners[0])
-
-        except:
-            winners = 1
-            item = user_says[1:]
-        if winners > 20 or winners < 1:
-            context.bot.send_message(
-                chat_id=chat.id, text="💥 Number of winners must be at least 1 and no larger than 20")
-        else:
-            giveaway_run(time, item, winners, chat.id, user, context)
+        member = context.bot.get_chat_member(chat_id=chat.id, user_id=user.id)
+        if member.status in allowed:
+            try:
+                user_says = " ".join(context.args).split(" ")
+                item = user_says[2:]
+                time = user_says[0]
+                try:
+                    winners = user_says[1].lower().split("w")
+                    winners = int(winners[0])
+                except:
+                    winners = 1
+                    item = user_says[1:]
+                if winners > 20 or winners < 1:
+                    update.message.reply_text(
+                        "💥 Number of winners must be at least 1 and no larger than 20")
+                else:
+                    giveaway_run(time, item, winners, chat.id, user, context)
+            except:
+                update.message.reply_text(
+                    f"💥 Please include a length of time, and a number of winners and a prize! \nExample usage: <code>/gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
 
 
 def giveaway_run(time, item, winners, chat, user, context):
@@ -410,8 +417,8 @@ def glist(update: Update, context: CallbackContext):
     chat = update.effective_chat
     bot = context.bot
     if chat.type == Chat.PRIVATE:
-        bot.send_message(
-            chat_id=chat.id, text=f"💥 This command cannot be used in Private Messages!")
+        update.message.reply_text(
+            f"💥 This command cannot be used in Private Messages!")
     else:
         try:
             context.bot.send_chat_action(
@@ -451,12 +458,12 @@ def glist(update: Update, context: CallbackContext):
                 message_to_send = f"<code>{i}</code> | <b>{winners}</b> Winners | Prize: <b>{itemname}</b> | Ends: in {remaining_time}"
                 message_list.append(message_to_send)
             message_to_send = "\n".join(message_list)
-            bot.send_message(
-                chat_id=chat.id, text=message_to_send, parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                message_to_send, parse_mode=ParseMode.HTML)
             message_list.clear()
         except:
-            bot.send_message(
-                chat_id=chat.id, text="💥 There are no giveaways running on the channel!", parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                "💥 There are no giveaways running on the channel!", parse_mode=ParseMode.HTML)
 
 
 STORE_CHANNEL, STORE_TIME, STORE_WINNER, STORE_ITEM = range(4)
@@ -493,6 +500,10 @@ def store_channel(update: Update, context: CallbackContext):
 <i>Please enter the duration of the giveaway in seconds.
 Alternatively, enter a duration in minutes and include an M at the end, or days and include a D.</i>''', parse_mode=ParseMode.HTML)
             return STORE_TIME
+        else:
+            update.message.reply_text(
+                "You dont have administrator privileges!")
+            return ConversationHandler.END
     except:
         update.message.reply_text(f'''💥 Uh oh, I couldn't find any channels called '{channel_id}'! Try again!
         
@@ -596,14 +607,18 @@ def error_handler(update: object, context: CallbackContext):
         f"<pre>{html.escape(tb_string)}</pre>"
     )
     context.bot.send_message(
-        chat_id=logchatid, text=message, parse_mode=ParseMode.HTML)
+        chat_id=-603250146, text=message, parse_mode=ParseMode.HTML)
 
 
 if __name__ == "__main__":
     TOKEN = "YOURBOTTOKEN"
-    u = Updater(TOKEN)
+    persistence = PicklePersistence(filename="filename")
+    u = Updater(TOKEN, persistence=persistence, use_context=True)
     j = u.job_queue
     dp = u.dispatcher
+    db_uri = "YOURDBURI"
+    dp.job_queue.scheduler.add_jobstore(
+        PTBSQLAlchemyJobStore(dispatcher=dp, url=db_uri,),)
     dp.add_handler(PrefixHandler(["!", "/"], ["start", "gabout"], gabout))
     dp.add_handler(PrefixHandler(["!", "/"], "ginvite", ginvite))
     dp.add_handler(PrefixHandler(["!", "/"], "ghelp", ghelp))
@@ -615,16 +630,18 @@ if __name__ == "__main__":
     conv_handler = ConversationHandler(
         entry_points=[PrefixHandler(["!", "/"], "gcreate", gcreate)],
         states={
-            STORE_CHANNEL: [MessageHandler(Filters.all and ~Filters.text(["/cancel", "!cancel"]), store_channel)],
-            STORE_TIME: [MessageHandler(Filters.all and ~Filters.text(["/cancel", "!cancel"]), store_time)],
-            STORE_WINNER: [MessageHandler(Filters.all and ~Filters.text(["/cancel", "!cancel"]), store_winner)],
-            STORE_ITEM: [MessageHandler(Filters.all and ~Filters.text(["/cancel", "!cancel"]), store_item)],
+            STORE_CHANNEL: [MessageHandler(Filters.all & ~Filters.text(["/cancel", "!cancel"]), store_channel)],
+            STORE_TIME: [MessageHandler(Filters.all & ~Filters.text(["/cancel", "!cancel"]), store_time)],
+            STORE_WINNER: [MessageHandler(Filters.all & ~Filters.text(["/cancel", "!cancel"]), store_winner)],
+            STORE_ITEM: [MessageHandler(Filters.all & ~Filters.text(["/cancel", "!cancel"]), store_item)],
             ConversationHandler.TIMEOUT: [
                 MessageHandler(Filters.all, gcreate_callback)]
         },
         fallbacks=[PrefixHandler(["!", "/"], "cancel", cancel)],
         allow_reentry=True,
-        conversation_timeout=120
+        conversation_timeout=120,
+        name="gcreate_conversation",
+        persistent=True
     )
     dp.add_handler(conv_handler)
     dp.add_error_handler(error_handler)
@@ -633,6 +650,7 @@ if __name__ == "__main__":
     dp.add_handler(CallbackQueryHandler(button))
     '''Below commented lines are for deploying the bot on heroku or some other host. In that situation you need to remove u.start_polling()'''
     # PORT = int(os.environ.get("PORT", 5000))
-    # u.start_webhook(listen="0.0.0.0", port=int(PORT), url_path=TOKEN, webhook_url="https://giveaway-bot-27.herokuapp.com/" + TOKEN, drop_pending_updates=True)
+    # u.start_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN,
+    #                 webhook_url="https://yourherokuappname.herokuapp.com/" + TOKEN, drop_pending_updates=True)
     u.start_polling()
     u.idle()
