@@ -1,6 +1,7 @@
 from telegram import Update, ParseMode, InlineKeyboardButton, InlineKeyboardMarkup, Chat, ChatMember, ChatMemberUpdated, ChatAction
-from telegram.ext import Updater, CallbackContext, PrefixHandler, ConversationHandler, MessageHandler, Filters, ChatMemberHandler, CallbackQueryHandler, PicklePersistence
+from telegram.ext import Updater, CallbackContext, PrefixHandler, ConversationHandler, MessageHandler, Filters, ChatMemberHandler, CallbackQueryHandler
 from ptbcontrib.ptb_sqlalchemy_jobstore import PTBSQLAlchemyJobStore
+from ptbcontrib.postgres_persistence import PostgresPersistence
 from pytz import timezone
 import psycopg
 import logging
@@ -16,15 +17,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 conn = psycopg.connect(host="host", user="user",
-                       dbname="dbname", password="password", port=5432)
+                       dbname="dbname", password="password", port=port)
+
 
 cur = conn.cursor()
 
 
-allowed = [ChatMember.ADMINISTRATOR, ChatMember.CREATOR]
+def member_status(chat, user, context):
+    allowed = [ChatMember.ADMINISTRATOR, ChatMember.CREATOR]
+    member = context.bot.get_chat_member(chat, user).status
+    if member in allowed:
+        return "yes"
+    else:
+        return "no"
 
 
 def gabout(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     if update.effective_chat.type != Chat.PRIVATE:
         update.message.reply_text(
             "Hey! I am alive :) PM me for any kind of help 😉")
@@ -37,6 +47,8 @@ Hello! I'm <b>GiveawayBot</b>, and I'm here to make it as easy as possible to ho
 
 
 def ghelp(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     help_text = f'''🎉 GiveawayBot commands: 
 
 <b>!ginvite</b> - shows how to invite the bot
@@ -60,6 +72,8 @@ For additional help contact <a href="tg://user?id=2056511700">Aditya</a>'''
 
 
 def ginvite(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     update.message.reply_text('''🎉 Hello! I'm <b>GiveawayBot</b>! I help to make giveaways quick and easy!
 You can add me to your group with this link:
 
@@ -67,7 +81,6 @@ You can add me to your group with this link:
 
 Check out my commands by typing <code>!ghelp</code>''', parse_mode=ParseMode.HTML)
 
-# Timezone!
 
 
 def extract_status_change(chat_member_update: ChatMemberUpdated,):
@@ -116,14 +129,14 @@ def button(update: Update, context: CallbackContext):
     choice = update.callback_query.data
     timezoneset = False
     if update.effective_chat.type in [Chat.SUPERGROUP, Chat.GROUP]:
-        member = context.bot.get_chat_member(
-            chat_id=update.effective_chat.id, user_id=update.callback_query.from_user.id)
+        member = member_status(update.effective_chat.id,
+                               update.callback_query.from_user.id, context)
     else:
-        member = context.bot.get_chat_member(
-            chat_id=int(context.user_data["chat_id"]), user_id=update.callback_query.from_user.id)
+        member = member_status(
+            int(context.user_data["chat_id"]), update.callback_query.from_user.id, context)
         context.dispatcher.chat_data[int(
             context.user_data["chat_id"])] = context.chat_data
-    if member.status in allowed:
+    if member == 'yes':
         if choice == "TZ":
             update.callback_query.edit_message_text(text="Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
                                                     reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
@@ -154,10 +167,12 @@ def button(update: Update, context: CallbackContext):
 
 
 def gconnect(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     if update.effective_chat.type in [Chat.SUPERGROUP, Chat.GROUP, Chat.CHANNEL]:
-        member = context.bot.get_chat_member(
-            chat_id=update.effective_chat.id, user_id=update.effective_user.id)
-        if member.status in allowed:
+        member = member_status(update.effective_chat.id,
+                               update.effective_user.id, context)
+        if member == "yes":
             context.bot.send_chat_action(
                 chat_id=update.effective_chat.id, action=ChatAction.TYPING)
             update.message.reply_text(
@@ -168,9 +183,8 @@ def gconnect(update: Update, context: CallbackContext):
     else:
         try:
             chat_id = int(" ".join(context.args).split(" ")[0])
-            member = context.bot.get_chat_member(
-                chat_id=chat_id, user_id=update.effective_user.id)
-            if member.status in allowed:
+            member = member_status(chat_id, update.effective_user.id, context)
+            if member == "yes":
                 update.message.reply_text(
                     f"Successfully connected with <b>{context.bot.get_chat(chat_id).title}</b>", parse_mode=ParseMode.HTML)
                 context.user_data["chat_id"] = chat_id
@@ -183,61 +197,74 @@ def gconnect(update: Update, context: CallbackContext):
 
 
 def gtimezone(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     if update.effective_chat.type in [Chat.GROUP, Chat.SUPERGROUP]:
-        member = context.bot.get_chat_member(
-            chat_id=update.effective_chat.id, user_id=update.effective_user.id)
-        if member.status in allowed:
+        member = member_status(update.effective_chat.id,
+                               update.effective_user.id, context)
+        if member == "yes":
             context.bot.send_message(chat_id=update.effective_chat.id, text="Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
                                      reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         else:
-            update.message.reply_text("You dont have administrator privileges")
+            update.message.reply_text(
+                "You don't have administrator privileges")
     elif update.effective_chat.type in [Chat.PRIVATE]:
         try:
-            member = context.bot.get_chat_member(chat_id=int(
-                context.user_data["chat_id"]), user_id=update.effective_user.id)
-            if member.status in allowed:
+            member = member_status(int(
+                context.user_data["chat_id"]), update.effective_user.id, context)
+            if member == "yes":
                 update.message.reply_text("Select your timezone/country\n<b>Note</b>:- If your country/timezone is not mentioned here you can request for yours on our <a href='https://github.com/aditya-yadav-27/Tgbots'>Github</a> profile",
                                           reply_markup=keyboard, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             else:
                 update.message.reply_text(
                     "You dont have administrator privileges")
-        except Exception:
+        except:
             update.message.reply_text(
-                "use <code>!gconnect</code> command first!", parse_mode=ParseMode.HTML)
-            print(traceback.format_exc())
+                f"use <code>!gconnect {html.escape('<chat_id>')}</code> command first!", parse_mode=ParseMode.HTML)
 
 
 def gstart(update: Update, context: CallbackContext):
     chat = update.effective_chat
     user = update.effective_user
+    context.bot.send_chat_action(
+        chat_id=chat.id, action=ChatAction.TYPING)
     if chat.type == Chat.PRIVATE:
         update.message.reply_text(
             f"💥 This command cannot be used in Private Messages!")
     else:
-        member = context.bot.get_chat_member(chat_id=chat.id, user_id=user.id)
-        if member.status in allowed:
+        member = member_status(chat.id, user.id, context)
+        if member == "yes":
             try:
                 user_says = " ".join(context.args).split(" ")
                 item = user_says[2:]
                 time = user_says[0]
-                try:
-                    winners = user_says[1].lower().split("w")
-                    winners = int(winners[0])
-                except:
-                    winners = 1
-                    item = user_says[1:]
-                if winners > 20 or winners < 1:
-                    update.message.reply_text(
-                        "💥 Number of winners must be at least 1 and no larger than 20")
+                if time == "":
+                    raise ValueError
                 else:
-                    giveaway_run(time, item, winners, chat.id, user, context)
+                    try:
+                        winners = int(user_says[1].lower().split("w")[0])
+                    except:
+                        winners = 1
+                        item = user_says[1:]
+                    if winners > 20 or winners < 1:
+                        update.message.reply_text(
+                            "💥 Number of winners must be at least 1 and no larger than 20")
+                    else:
+                        item = " ".join(item)
+                        giveaway_run(time, item, winners, chat.id,
+                                     user, context, update)
             except:
                 update.message.reply_text(
-                    f"💥 Please include a length of time, and a number of winners and a prize! \nExample usage: <code>/gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
+                    f"💥 Please include a length of time, and optionally a number of winners and a prize!\nExample usage: <code>!gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
+        else:
+            update.message.repply_text(
+                "You don't have administrator privileges")
 
 
-def giveaway_run(time, item, winners, chat, user, context):
+def giveaway_run(time, item, winners, chat, user, context, update):
     bot = context.bot
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
         now = datetime.datetime.now(timezone(context.chat_data["timezone"]))
         keyboard = [[InlineKeyboardButton("🎉", callback_data="1")]]
@@ -245,123 +272,115 @@ def giveaway_run(time, item, winners, chat, user, context):
         minutes = False
         hours = False
         days = False
-        time = time.lower()
         try:
+            time = time.lower()
             if time.endswith("s"):
-                time = time.split("s")
-                time1 = int(time[0])
-                if time1 > 2592000:
-                    bot.send_message(
-                        chat_id=chat, text="Giveaways cannot be greater than 30 days!")
+                splitted_time = time.rsplit("s", 1)
+                time1 = int(splitted_time[0])
+                if time1 > 1209600 or time1 < 10:
+                    update.message.reply_text(
+                        "💥 Giveaway time must not be shorter than 10 seconds and no longer than 2 weeks")
                 else:
                     seconds = True
                     added = now+datetime.timedelta(seconds=int(time1))
-                    time = f"{time1} Seconds"
+                    time_word = f"{time1} Seconds"
             elif time.endswith("m"):
-                time = time.split("m")
-                time1 = int(time[0])
-                if time1 > 43200:
-                    bot.send_message(
-                        chat_id=chat, text="Giveaways cannot be greater than 30 days!")
+                splitted_time = time.rsplit("m", 1)
+                time1 = int(splitted_time[0])
+                if time1 > 20160 or time1 < 1/6:
+                    update.message.reply_text(
+                        "💥 Giveaway time must not be shorter than 10 seconds and no longer than 2 weeks")
                 else:
                     minutes = True
                     added = now+datetime.timedelta(minutes=int(time1))
-                    time = f"{time1} Minutes"
+                    time_word = f"{time1} Minutes"
             elif time.endswith("h"):
-                time = time.split("h")
-                time1 = int(time[0])
-                if time1 > 720:
-                    bot.send_message(
-                        chat_id=chat, text="Giveaways cannot be greater than 30 days!")
+                splitted_time = time.rsplit("h", 1)
+                time1 = int(splitted_time[0])
+                if time1 > 336 or time1 < 1/360:
+                    update.message.reply_text(
+                        "💥 Giveaway time must not be shorter than 10 seconds and no longer than 2 weeks")
                 else:
                     hours = True
                     added = now+datetime.timedelta(hours=int(time1))
-                    time = f"{time1} Hours"
+                    time_word = f"{time1} Hours"
             elif time.endswith("d"):
-                time = time.split("d")
-                time1 = int(time[0])
-                if time1 > 30:
-                    bot.send_message(
-                        chat_id=chat, text="Giveaways cannot be greater than 30 days!")
+                splitted_time = time.rsplit("d", 1)
+                time1 = int(splitted_time[0])
+                if time1 > 14 or time1 < 1/8640:
+                    update.message.reply_text(
+                        "💥 Giveaway time must not be shorter than 10 seconds and no longer than 2 weeks")
                 else:
                     days = True
                     added = now+datetime.timedelta(days=int(time1))
-                    time = f"{time1} Days"
-
+                    time_word = f"{time1} Days"
+            else:
+                raise ValueError
         except:
-            bot.send_message(
-                chat_id=chat, text=f"💥 Failed to parse time from <code>{time}</code> \nExample usage: <code>/gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
+            update.message.reply_text(
+                f"💥 Failed to parse time from <code>{time}</code>\nExample usage: <code>/gstart 30m 5w Awesome T-Shirt</code>", parse_mode=ParseMode.HTML)
 
-        try:
-            if seconds or minutes or hours or days == True:
-                if now.strftime("%d %m %Y") == added.strftime("%d %m %Y"):
-                    end = added.strftime("Today at %I:%M %p")
-                else:
-                    end = added.strftime("%m/%d/%Y")
-
-                item = str(item)
-                item = item.replace("[", "").replace("]", "").replace(
-                    "'", "").replace(",", "")
-                msg = bot.send_message(chat_id=chat, text=f'''🎉 GIVEAWAY 🎉
+        if seconds or minutes or hours or days == True:
+            if now.strftime("%d %m %Y") == added.strftime("%d %m %Y"):
+                end = added.strftime("Today at %I:%M %p")
+            else:
+                end = added.strftime("%m/%d/%Y")
+            msg = bot.send_message(chat_id=chat, text=f'''🎉 GIVEAWAY 🎉
 
 <b>{item}</b>
 
 React with 🎉 to enter!
-Ends: in {time} ({added.strftime("%B %d, %Y %I:%M %p")})
+Ends: in {time_word} ({added.strftime("%B %d, %Y %I:%M %p")})
 Hosted by: <a href="tg://user?id={user.id}">{user.first_name}</a>
 
 <i>{winners} Winner(s)| Ends at • {end}</i>
         ''', parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
-                time1 = int(time1)
-                name = str(chat)+str(msg.message_id)
-                if seconds == True:
-                    j.run_once(callback, time1, context=[
-                        chat, msg.message_id], name=name)
-                elif minutes == True:
-                    j.run_once(callback, time1*60,
-                               context=[chat, msg.message_id], name=name)
-                elif hours == True:
-                    j.run_once(callback, time1*60*60,
-                               context=[chat, msg.message_id], name=name)
-                elif days == True:
-                    j.run_once(callback, time1*60*60*24,
-                               context=[chat, msg.message_id], name=name)
-                try:
-                    cur.execute('''CREATE TABLE giveaway (
-                    id BIGSERIAL PRIMARY KEY NOT NULL,
-                    chat_id BIGINT NOT NULL,
-                    message_id BIGINT NOT NULL,
-                    item_name TEXT,
-                    winners INT
-                    )'''
-                                )
-                    cur.execute("INSERT INTO giveaway (chat_id, message_id, item_name, winners) VALUES (%s, %s, %s, %s)",
-                                (chat, msg.message_id, str(item), winners))
-                except:
-                    cur.execute("ROLLBACK")
-                    cur.execute("INSERT INTO giveaway (chat_id, message_id, item_name, winners) VALUES (%s, %s, %s, %s)",
-                                (chat, msg.message_id, str(item), winners))
-                conn.commit()
-            else:
-                pass
-        except Exception:
-            print(traceback.format_exc())
-    except Exception:
-        print(traceback.format_exc())
-        bot.send_message(
-            chat, text="Select your timezone first! use <code>!gtimezone</code> command", parse_mode=ParseMode.HTML)
+            time1 = int(time1)
+            name = str(chat)+str(msg.message_id)
+            if seconds == True:
+                j.run_once(callback, time1, context=[
+                    chat, msg.message_id], name=name)
+            elif minutes == True:
+                j.run_once(callback, time1*60,
+                           context=[chat, msg.message_id], name=name)
+            elif hours == True:
+                j.run_once(callback, time1*60*60,
+                           context=[chat, msg.message_id], name=name)
+            elif days == True:
+                j.run_once(callback, time1*60*60*24,
+                           context=[chat, msg.message_id], name=name)
+            try:
+                cur.execute('''CREATE TABLE giveaway (
+                id BIGSERIAL PRIMARY KEY NOT NULL,
+                chat_id BIGINT NOT NULL,
+                message_id BIGINT NOT NULL,
+                item_name TEXT,
+                winners INT
+                )'''
+                            )
+                cur.execute("INSERT INTO giveaway (chat_id, message_id, item_name, winners) VALUES (%s, %s, %s, %s)",
+                            (chat, msg.message_id, str(item), winners))
+            except:
+                cur.execute("ROLLBACK")
+                cur.execute("INSERT INTO giveaway (chat_id, message_id, item_name, winners) VALUES (%s, %s, %s, %s)",
+                            (chat, msg.message_id, str(item), winners))
+            conn.commit()
+    except:
+        update.message.reply_text(
+            "Select your timezone first! use <code>!gtimezone</code> command", parse_mode=ParseMode.HTML)
 
 
 def callback(context: CallbackContext):
-    details = context.job.context
-    bot = context.bot
-    chat_id = details[0]
-    message_id = details[1]
+
+    chat_id = context.job.context[0]
+    message_id = context.job.context[1]
+    context.bot.send_chat_action(
+        chat_id=chat_id, action=ChatAction.TYPING)
     cur.execute(
         f"SELECT item_name FROM giveaway WHERE chat_id={chat_id} AND message_id={message_id}")
     row = cur.fetchall()
     item_name = row[0][0]
-    bot.send_message(
+    context.bot.send_message(
         chat_id=chat_id, text=f"Congratulation you won <b>{item_name}</b>", parse_mode=ParseMode.HTML)
     cur.execute(
         f"DELETE FROM giveaway WHERE chat_id={chat_id} AND message_id={message_id}")
@@ -369,22 +388,21 @@ def callback(context: CallbackContext):
 
 
 def gend(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     chat = update.effective_chat
     user = update.effective_user
-    bot = context.bot
     if chat.type == Chat.PRIVATE:
-        bot.send_message(
-            chat_id=chat.id, text=f"💥 This command cannot be used in Private Messages!")
+        update.message.reply_text(
+            f"💥 This command cannot be used in Private Messages!")
     else:
-        members = bot.get_chat_member(chat_id=chat.id, user_id=user.id)
-        if members.status not in allowed:
-            bot.send_message(
-                chat_id=chat.id, text="You don't have administrator privileges")
+        member = member_status(chat.id, user.id, context)
+        if member == "no":
+            update.message.reply_text(
+                "You don't have administrator privileges")
         else:
-            user_says = " ".join(context.args)
-            user_says = user_says.split(" ")
-            message_id = user_says[0]
-            if user_says == [""] or [" "]:
+            message_id = " ".join(context.args).split(" ")[0]
+            if message_id == "":
                 try:
                     cur.execute(
                         f"SELECT message_id FROM giveaway WHERE id=(SELECT MAX(id) FROM giveaway)")
@@ -396,8 +414,8 @@ def gend(update: Update, context: CallbackContext):
                         job.run(context.dispatcher)
                         job.schedule_removal()
                 except:
-                    bot.send_message(
-                        chat_id=chat.id, text=f"💥 I couldn't find any recent giveaways in this channel.")
+                    update.message.reply_text(
+                        f"💥 I couldn't find any recent giveaways in this channel.")
             else:
                 try:
                     name = str(chat.id)+message_id
@@ -408,21 +426,20 @@ def gend(update: Update, context: CallbackContext):
                         for job in current_jobs:
                             job.run(context.dispatcher)
                             job.schedule_removal()
-                except ValueError:
-                    bot.send_message(
-                        chat_id=chat.id, text="💥 That is not a valid message ID! Try running without an ID to use the most recent giveaway in a channel.")
+                except:
+                    update.message.reply_text(
+                        "💥 That is not a valid message ID! Try running without an ID to use the most recent giveaway in a channel.")
 
 
 def glist(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     chat = update.effective_chat
-    bot = context.bot
     if chat.type == Chat.PRIVATE:
         update.message.reply_text(
             f"💥 This command cannot be used in Private Messages!")
     else:
         try:
-            context.bot.send_chat_action(
-                chat_id=update.effective_chat.id, action=ChatAction.TYPING)
             cur.execute(
                 f"SELECT message_id FROM giveaway where chat_id={chat.id}")
             message_id = cur.fetchall()
@@ -444,24 +461,26 @@ def glist(update: Update, context: CallbackContext):
                     secs = remaining.total_seconds()
                     if secs < 60:
                         remaining_time = f"<b>{round(secs)}</b> seconds"
-                    elif secs > 60 and secs < 3600:
+                    elif secs >= 60 and secs < 3600:
                         remaining_time = f"<b>{round(secs/60)}</b> minutes"
-                    elif secs > 3600 and secs < 86400:
+                    elif secs >= 3600 and secs < 86400:
                         remaining_time = f"<b>{round(secs/3600)}</b> hours"
-                    elif secs > 86400:
+                    else:
                         remaining_time = f"<b>{round(secs/86400)}</b> days"
+
                 cur.execute(
                     f"SELECT item_name FROM giveaway WHERE message_id={i} AND chat_id={chat.id}")
                 items_name = cur.fetchall()
                 for item in items_name:
                     itemname = item[0]
-                message_to_send = f"<code>{i}</code> | <b>{winners}</b> Winners | Prize: <b>{itemname}</b> | Ends: in {remaining_time}"
-                message_list.append(message_to_send)
-            message_to_send = "\n".join(message_list)
+                message_list.append(
+                    f"<code>{i}</code> | <b>{winners}</b> Winners | Prize: <b>{itemname}</b> | Ends: in {remaining_time}")
             update.message.reply_text(
-                message_to_send, parse_mode=ParseMode.HTML)
+                "\n".join(message_list), parse_mode=ParseMode.HTML)
             message_list.clear()
+            message_ids.clear()
         except:
+            print(traceback.format_exc())
             update.message.reply_text(
                 "💥 There are no giveaways running on the channel!", parse_mode=ParseMode.HTML)
 
@@ -470,6 +489,8 @@ STORE_CHANNEL, STORE_TIME, STORE_WINNER, STORE_ITEM = range(4)
 
 
 def gcreate(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     if update.effective_chat.type == Chat.PRIVATE:
         update.message.reply_text('''🎉 Alright! Let's set up your giveaway! First, what channel do you want the giveaway in?
 You can type <code>!cancel</code> at any time to cancel creation.
@@ -483,6 +504,8 @@ You can type <code>!cancel</code> at any time to cancel creation.
 
 
 def store_channel(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     channel_id = update.message.text
     context.chat_data["channel_id"] = channel_id
     try:
@@ -492,9 +515,9 @@ def store_channel(update: Update, context: CallbackContext):
             "Uuh use <code>!gtimezone</code> command to set the timezone of the specified chat first!", parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     try:
-        member = context.bot.get_chat_member(chat_id=int(
-            context.chat_data["channel_id"]), user_id=update.effective_user.id)
-        if member.status in allowed:
+        member = member_status(int(
+            context.chat_data["channel_id"]), update.effective_user.id, context)
+        if member == "yes":
             update.message.reply_text(f'''🎉 Sweet! The giveaway will be in <b>{context.bot.get_chat(channel_id).title}</b>! Next, how long should the giveaway last?
 
 <i>Please enter the duration of the giveaway in seconds.
@@ -502,7 +525,7 @@ Alternatively, enter a duration in minutes and include an M at the end, or days 
             return STORE_TIME
         else:
             update.message.reply_text(
-                "You dont have administrator privileges!")
+                "You don't have administrator privileges!")
             return ConversationHandler.END
     except:
         update.message.reply_text(f'''💥 Uh oh, I couldn't find any channels called '{channel_id}'! Try again!
@@ -512,20 +535,29 @@ Alternatively, enter a duration in minutes and include an M at the end, or days 
 
 
 def store_time(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     time = update.message.text
     context.chat_data["time"] = time
     time = time.split(" ")[0].lower()
     try:
-        if time.endswith("s"):
-            time = f'''{int(time.split("s")[0])} seconds'''
-        elif time.endswith("m"):
-            time = f'''{int(time.split("m")[0])} minutes'''
-        elif time.endswith("h"):
-            time = f'''{int(time.split("h")[0])} hours'''
-        elif time.endswith("d"):
-            time = f'''{int(time.split("d")[0])} days'''
+        if time.endswith("s") and int(time.rsplit("s", 1)[0]) >= 10 and int(time.rsplit("s", 1)[0]) <= 1209600:
+            time = f'''{int(time.rsplit("s", 1)[0])} seconds'''
+        elif time.endswith("m") and int(time.rsplit("m", 1)[0]) >= 1/6 and int(time.rsplit("m", 1)[0]) <= 20160:
+            time = f'''{int(time.rsplit("m", 1)[0])} minutes'''
+        elif time.endswith("h") and int(time.rsplit("h", 1)[0]) >= 1/360 and int(time.rsplit("h", 1)[0]) <= 336:
+            time = f'''{int(time.split("h", 1)[0])} hours'''
+        elif time.endswith("d") and int(time.rsplit("d", 1)[0]) >= 1/8640 and int(time.rsplit("d", 1)[0]) <= 14:
+            time = f'''{int(time.rsplit("d", 1)[0])} days'''
         else:
-            time = f"{int(time)} seconds"
+            try:
+                if int(time) >= 10 and int(time) <= 1209600:
+                    time = f"{int(time)} seconds"
+                else:
+                    raise ValueError
+            except:
+                update.message.reply_text('''💥 Oh! Sorry! Giveaway time must not be shorter than 10 seconds and no longer than 2 weeks Mind trying again?\n\n<i>Please enter the duration of the giveaway in seconds.\nAlternatively, enter a duration in minutes and include an M at the end, or days and include a D.</i>''', parse_mode=ParseMode.HTML)
+                return STORE_TIME
         update.message.reply_text(f'''🎉 Neat! This giveaway will last <b>{time}</b>! Now, how many winners should there be?
 
 <i>Please enter a number of winners between 1 and 20.</i>''', parse_mode=ParseMode.HTML)
@@ -539,6 +571,8 @@ Alternatively, enter a duration in minutes and include an M at the end, or days 
 
 
 def store_winner(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
         winners = int(update.message.text)
         if winners > 20 or winners < 1:
@@ -567,12 +601,14 @@ def store_winner(update: Update, context: CallbackContext):
 
 
 def store_item(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     item = update.message.text
     update.message.reply_text(
         f'''🎉 Done! The giveaway for the <b>{item}</b> is starting in <b>{context.bot.get_chat(int(context.chat_data["channel_id"])).title}</b>''', parse_mode=ParseMode.HTML)
 
     giveaway_run(time=context.chat_data["time"], item=item, winners=int(context.chat_data["winner"]), chat=int(
-        context.chat_data["channel_id"]), user=update.effective_user, context=context)
+        context.chat_data["channel_id"]), user=update.effective_user, context=context, update=update)
     return ConversationHandler.END
 
 
@@ -584,6 +620,8 @@ def cancel(update, context):
 
 
 def gcreate_callback(update: Update, context: CallbackContext):
+    context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     user = update.effective_user
     update.message.reply_text(f'''💥 Uh oh! You took longer than 2 minutes to respond, <a href="tg://user?id={user.id}">{user.first_name}</a>!
 
@@ -611,12 +649,12 @@ def error_handler(update: object, context: CallbackContext):
 
 
 if __name__ == "__main__":
-    TOKEN = "YOURBOTTOKEN"
-    persistence = PicklePersistence(filename="filename")
-    u = Updater(TOKEN, persistence=persistence, use_context=True)
+    TOKEN = "Yourbottoken
+    db_uri = "db_uri"
+    u = Updater(TOKEN, persistence=PostgresPersistence(
+        url=db_uri), use_context=True)
     j = u.job_queue
     dp = u.dispatcher
-    db_uri = "YOURDBURI"
     dp.job_queue.scheduler.add_jobstore(
         PTBSQLAlchemyJobStore(dispatcher=dp, url=db_uri,),)
     dp.add_handler(PrefixHandler(["!", "/"], ["start", "gabout"], gabout))
@@ -651,6 +689,6 @@ if __name__ == "__main__":
     '''Below commented lines are for deploying the bot on heroku or some other host. In that situation you need to remove u.start_polling()'''
     # PORT = int(os.environ.get("PORT", 5000))
     # u.start_webhook(listen="0.0.0.0", port=PORT, url_path=TOKEN,
-    #                 webhook_url="https://yourherokuappname.herokuapp.com/" + TOKEN, drop_pending_updates=True)
+    #              webhook_url="https://yourappname.herokuapp.com/" + TOKEN, drop_pending_updates=True)
     u.start_polling()
     u.idle()
